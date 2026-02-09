@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>Epstein House</title>
+<style>
+body{margin:0;background:black;color:white;text-align:center;font-family:Arial}
+canvas{background:#111;display:block;margin:auto;border:3px solid #555;}
+.menu img{width:80px;cursor:pointer;margin:10px;border:3px solid white;}
+#startScreen,#characterSelection,#gameOver{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;z-index:99;
+}
+#startScreen{background:#000;font-size:36px;color:white;}
+#characterSelection{display:none;background:#000;color:white;font-size:28px;}
+#gameOver{display:none;background:rgba(0,0,0,0.9);color:red;font-size:50px;}
+</style>
+</head>
+<body>
+
+<div id="startScreen">
+  <h1>Epstein House</h1>
+  <p>This game developed by Abdou Zeraoulia</p>
+  <button onclick="showCharacterSelection()">ابدأ</button>
+</div>
+
+<div id="characterSelection">
+  <h2>اختر اللاعب</h2>
+  <div id="players">
+    <img src="player1.png" data-name="Player 1">
+    <img src="player2.png" data-name="Player 2">
+    <img src="player3.png" data-name="Player 3">
+  </div>
+  <h2>اختر هذا li ra7 y7wik</h2>
+  <div id="zombies">
+    <img src="zombie1.png" data-name="Zombie 1">
+    <img src="zombie2.png" data-name="Zombie 2">
+    <img src="zombie3.png" data-name="Zombie 3">
+  </div>
+</div>
+
+<canvas id="game" width="1400" height="900"></canvas>
+<div id="gameOver">بربشهالك</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let playerImg=new Image(), zombieImg=new Image();
+let dieSound, gameOverSound=new Audio("gameover.mp3"), game=true;
+let player={x:700,y:450,w:60,h:60,hearts:3};
+let zombies=[], bullets=[];
+let zombieName="";
+
+// عرض اختيار الشخصيات
+function showCharacterSelection(){
+  document.getElementById("startScreen").style.display="none";
+  document.getElementById("characterSelection").style.display="flex";
+}
+
+// اختيار اللاعب
+let playerChosen=false;
+document.querySelectorAll("#players img").forEach(img=>{
+  img.onclick=()=>{
+    playerImg.src=img.src;
+    playerChosen=true;
+    startIfReady();
+  };
+});
+
+// اختيار الزومبي
+let zombieChosen=false;
+document.querySelectorAll("#zombies img").forEach((img,i)=>{
+  img.onclick=()=>{
+    zombieImg.src=img.src;
+    dieSound=new Audio(`die${i+1}.mp3`);
+    zombieChosen=true;
+    zombieName=img.dataset.name;
+    startIfReady();
+  };
+});
+
+function startIfReady(){
+  if(playerChosen && zombieChosen){
+    document.getElementById("characterSelection").style.display="none";
+    startGame();
+  }
+}
+
+// توليد الزومبي
+setInterval(()=>{
+  if(!game) return;
+  const side=Math.floor(Math.random()*4);
+  let x,y;
+  if(side===0){x=-80;y=Math.random()*canvas.height;}
+  if(side===1){x=canvas.width+80;y=Math.random()*canvas.height;}
+  if(side===2){x=Math.random()*canvas.width;y=-80;}
+  if(side===3){x=Math.random()*canvas.width;y=canvas.height+80;}
+  zombies.push({x,y,w:60,h:60});
+},900);
+
+// لمس الزومبي لإطلاق رصاصة
+canvas.addEventListener("touchstart", e=>{
+  if(!game) return;
+  const rect=canvas.getBoundingClientRect();
+  const touches=e.touches;
+  for(let t=0;t<touches.length;t++){
+    const mx=touches[t].clientX-rect.left;
+    const my=touches[t].clientY-rect.top;
+    zombies.forEach(z=>{
+      if(mx>z.x && mx<z.x+z.w && my>z.y && my<z.y+z.h){
+        bullets.push({x:player.x+30,y:player.y+30,tx:z.x+30,ty:z.y+30,target:z});
+      }
+    });
+  }
+});
+
+// حلقة اللعبة
+function loop(){
+  if(!game) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // اللاعب ثابت
+  ctx.drawImage(playerImg,player.x,player.y,player.w,player.h);
+
+  // القلوب
+  ctx.font="28px Arial"; ctx.fillStyle="red";
+  ctx.fillText("❤️".repeat(player.hearts),canvas.width/2-50,40);
+
+  // الزومبي
+  zombies.forEach((z,i)=>{
+    const ang=Math.atan2(player.y-z.y,player.x-z.x);
+    z.x+=Math.cos(ang)*2.8;
+    z.y+=Math.sin(ang)*2.8;
+    ctx.drawImage(zombieImg,z.x,z.y,z.w,z.h);
+
+    // لمس اللاعب → يخسر قلب
+    if(Math.hypot(z.x-player.x,z.y-player.y)<45){
+      player.hearts--;
+      zombies.splice(i,1);
+      if(player.hearts<=0) endGame();
+    }
+  });
+
+  // الرصاص
+  bullets.forEach((b,bi)=>{
+    const ang=Math.atan2(b.ty-b.y,b.tx-b.x);
+    b.x+=Math.cos(ang)*10;
+    b.y+=Math.sin(ang)*10;
+    ctx.fillStyle="yellow";
+    ctx.fillRect(b.x,b.y,6,6);
+
+    const z=b.target;
+    if(zombies.includes(z) && b.x>z.x && b.x<z.x+z.w && b.y>z.y && b.y<z.y+z.h){
+      zombies.splice(zombies.indexOf(z),1);
+      bullets.splice(bi,1);
+      dieSound.play();
+    }
+  });
+
+  requestAnimationFrame(loop);
+}
+
+function startGame(){
+  game=true;
+  zombies=[];
+  bullets=[];
+  player.hearts=3;
+  document.getElementById("gameOver").style.display="none";
+  loop();
+}
+
+function endGame(){
+  game=false;
+  document.getElementById("gameOver").style.display="flex";
+  gameOverSound.play();
+}
+
+</script>
+</body>
+</html>
